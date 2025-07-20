@@ -1,5 +1,6 @@
 import random
 import os
+import time
 
 # ---------------------------
 # Leer instancia QAPLIB (.dat)
@@ -59,13 +60,11 @@ def cruzar(p1, p2):
                 pos = p2.index(p1[pos])
             hijo[pos] = elem
 
-    # Rellenar los huecos restantes
     for k in range(n):
         if hijo[k] is None:
             hijo[k] = p2[k]
 
     return hijo
-
 
 # ---------------------------
 # Mutación por intercambio
@@ -94,7 +93,6 @@ def resolver_qap(ruta_archivo, generaciones=100, tam_poblacion=100):
     for gen in range(generaciones):
         poblacion.sort(key=lambda p: fitness(p, A, B))
         mejor = poblacion[0]
-        # print(f"Gen {gen} | Mejor costo: {fitness(mejor, A, B)}")
 
         nueva_poblacion = poblacion[:20]  # elitismo
         while len(nueva_poblacion) < tam_poblacion:
@@ -106,7 +104,9 @@ def resolver_qap(ruta_archivo, generaciones=100, tam_poblacion=100):
 
         poblacion = nueva_poblacion
 
-    return poblacion[0], fitness(poblacion[0], A, B)
+    mejor_solucion = poblacion[0]
+    mejor_costo = fitness(mejor_solucion, A, B)
+    return mejor_solucion, mejor_costo
 
 # ---------------------------
 # Leer solución óptima de QAPLIB
@@ -114,6 +114,8 @@ def resolver_qap(ruta_archivo, generaciones=100, tam_poblacion=100):
 def leer_solucion_optima(path):
     with open(path, 'r') as f:
         valores = list(map(int, f.read().split()))
+    if len(valores) < 2:
+        raise ValueError(f"Archivo de solución mal formado: {path}")
     costo_optimo = valores[1]
     solucion = [x - 1 for x in valores[2:]]  # Convertir a base 0
     return solucion, costo_optimo
@@ -131,21 +133,39 @@ def probar_todas_instancias(data_dir="qapdata", soln_dir="qapsoln", generaciones
         nombre_base = os.path.splitext(archivo)[0]
         ruta_solucion = os.path.join(soln_dir, nombre_base + ".sln")
 
-        # Ejecutar el algoritmo genético para esta instancia
+        # Medir tiempo de ejecución
+        inicio = time.time()
         solucion, costo = resolver_qap(ruta_instancia, generaciones, tam_poblacion)
+        fin = time.time()
+        tiempo = fin - inicio
 
         # Leer solución óptima si existe
         if os.path.exists(ruta_solucion):
-            solucion_optima, costo_optimo = leer_solucion_optima(ruta_solucion)
-            diferencia = costo - costo_optimo
+            try:
+                _, costo_optimo = leer_solucion_optima(ruta_solucion)
+                if costo_optimo > 0:
+                    diferencia = costo - costo_optimo
+                    gap = (diferencia / costo_optimo) * 100
+                else:
+                    diferencia = None
+                    gap = None
+                    print(f"Advertencia: Costo óptimo inválido (0) en {ruta_solucion}")
+            except Exception as e:
+                costo_optimo = None
+                diferencia = None
+                gap = None
+                print(f"Error al leer {ruta_solucion}: {e}")
         else:
             costo_optimo = None
             diferencia = None
+            gap = None
 
-        print(f"Costo Algoritmo Genético: {costo}")
+        print(f"Costo AG: {costo}")
+        print(f"Tiempo de ejecución: {tiempo:.2f} segundos")
         if costo_optimo is not None:
             print(f"Costo óptimo (QAPLIB): {costo_optimo}")
-            print(f"Diferencia: {diferencia}")
+            print(f"Diferencia absoluta: {diferencia}")
+            print(f"Gap porcentual: {gap:.2f} %" if gap is not None else "Gap no disponible.")
         else:
             print("Solución óptima no disponible.")
 
@@ -153,13 +173,22 @@ def probar_todas_instancias(data_dir="qapdata", soln_dir="qapsoln", generaciones
             "instancia": archivo,
             "costo_ag": costo,
             "costo_optimo": costo_optimo,
-            "diferencia": diferencia
+            "diferencia": diferencia,
+            "gap": gap,
+            "tiempo": tiempo
         })
 
     return resultados
 
+# ---------------------------
+# Ejecutar todo
+# ---------------------------
 if __name__ == "__main__":
-    resultados = probar_todas_instancias(generaciones=100, tam_poblacion=100)  # Puedes cambiar parámetros
+    resultados = probar_todas_instancias(generaciones=100, tam_poblacion=100)
+
     print("\nResumen de resultados:")
     for r in resultados:
-        print(f"{r['instancia']}: Costo AG={r['costo_ag']} - Costo Óptimo={r['costo_optimo']} - Diferencia={r['diferencia']}")
+        print(f"{r['instancia']}: Costo AG={r['costo_ag']} | "
+              f"Costo Óptimo={r['costo_optimo']} | "
+              f"Dif={r['diferencia']} | Gap={'{:.2f}%'.format(r['gap']) if r['gap'] is not None else 'N/A'} | "
+              f"Tiempo={r['tiempo']:.2f}s")
